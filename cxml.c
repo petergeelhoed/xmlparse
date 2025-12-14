@@ -1,13 +1,9 @@
-/* xmline.c
+/* xmline_nomalloc.c — minimal changes to avoid per-item mallocs when
+ * you can guarantee <= MAX_PAIRS outstanding items and bounded text length.
  *
- * Rewritten from the C++ xmline.cpp into plain C using libxml2'str
- * xmlTextReader.
+ * Only shown parts changed from the original are included here as a full
+ * standalone file for clarity.
  *
- * Compile:
- *   gcc -std=c11 -Wall -Wextra xmline.c -o xmline `xml2-config --cflags --libs`
- *
- * Usage:
- *   xmline < input.xml
  */
 
 #include <assert.h>
@@ -19,119 +15,41 @@
 #include <string.h>
 #include <unistd.h>
 
+#define MAX_PAIRS 64 /* maximum unmatched speeds or flows */
+#define MAX_TEXT 512 /* max length for site id / publicationTime strings */
+
 /* Compare libxml2 xmlChar* local name with a C string */
 static int name_is(const xmlChar* local, const char* key)
 {
     return local != NULL && (xmlStrEqual(local, BAD_CAST key) != 0);
 }
 
-/* Simple dynamic queue for doubles */
+/* Fixed-size ring buffer for doubles (no malloc) */
 typedef struct
 {
-    double* data;
-    size_t capacity;
-    size_t start; /* index of first element */
-    size_t end;   /* index one past last element */
-} double_queue_t;
+    double data[MAX_PAIRS];
+    size_t start;
+    size_t end;
+} double_ring_t;
 
-static void dq_init(double_queue_t* queue)
-{
-    queue->data = NULL;
-    queue->capacity = 0;
-    queue->start = queue->end = 0;
-}
+static void dq_init(double_ring_t* queue) { queue->start = queue->end = 0; }
 
-static void dq_free(double_queue_t* queue)
-{
-    free(queue->data);
-    queue->data = NULL;
-    queue->capacity = 0;
-    queue->start = queue->end = 0;
-}
-
-static size_t dq_size(const double_queue_t* queue)
+static size_t dq_size(const double_ring_t* queue)
 {
     return (queue->end >= queue->start) ? (queue->end - queue->start) : 0;
 }
 
-static int dq_ensure_capacity(double_queue_t* queue, size_t additional)
+static int dq_push_back(double_ring_t* queue, double value)
 {
-    assert(queue);
-
-    const size_t size = dq_size(queue);
-
-    // --- Overflow-safe computation of needed slots ---
-    // We need 'size + additional' slots available in total.
-    if (additional > SIZE_MAX - size)
+    if (dq_size(queue) >= MAX_PAIRS)
     {
-        // size + additional would overflow
-        return 0;
-    }
-    const size_t needed = size + additional;
-
-    // If capacity already sufficient, we're done.
-    if (needed <= queue->capacity)
-    {
-        return 1;
-    }
-
-    // --- Compute new capacity with geometric growth, guarding overflow ---
-    const size_t initial_capacity = 16;
-    size_t newcap = (queue->capacity ? queue->capacity : initial_capacity);
-
-    // Grow at least until 'needed', doubling when possible.
-    while (newcap < needed)
-    {
-        // Prevent overflow when doubling
-        if (newcap > SIZE_MAX / 2)
-        {
-            newcap = needed; // fall back to exact needed (last safe step)
-            break;
-        }
-        newcap *= 2;
-    }
-
-    // --- Allocate or grow the buffer ---
-    // Note: realloc(NULL, n) behaves like malloc(n).
-    double* newdata = (double*)realloc(queue->data, newcap * sizeof *newdata);
-    if (!newdata)
-    {
-        // Allocation failed; keep the old buffer intact
-        return 0;
-    }
-
-    // Update pointer and capacity first (safe now that we have storage).
-    queue->data = newdata;
-    queue->capacity = newcap;
-
-    // --- Normalize the active slice to begin at index 0 ---
-    // If there are elements and the slice doesn't start at 0, shift it.
-    if (size > 0 && queue->start != 0)
-    {
-        // NOLINTNEXTLINE
-        memmove(queue->data,
-                queue->data + queue->start,
-                size * sizeof *queue->data);
-    }
-
-    // Reset indices to represent the normalized slice: [0, size)
-    queue->start = 0;
-    queue->end = size;
-
-    return 1;
-}
-
-static int dq_push_back(double_queue_t* queue, double value)
-{
-    if (!dq_ensure_capacity(queue, 1))
-    {
-        return 0;
+        return 0; /* full */
     }
     queue->data[queue->end++] = value;
     return 1;
 }
 
-static int dq_pop_front(double_queue_t* queue, double* out)
+static int dq_pop_front(double_ring_t* queue, double* out)
 {
     if (dq_size(queue) == 0)
     {
@@ -140,118 +58,37 @@ static int dq_pop_front(double_queue_t* queue, double* out)
     *out = queue->data[queue->start++];
     if (queue->start == queue->end)
     {
-        queue->start = queue->end = 0; /* reset to avoid unbounded indices */
+        queue->start = queue->end = 0;
     }
     return 1;
 }
 
-/* Same dynamic queue for long integers */
+/* Fixed-size ring buffer for long (no malloc) */
 typedef struct
 {
-    long* data;
-    size_t capacity;
+    long data[MAX_PAIRS];
     size_t start;
     size_t end;
-} long_queue_t;
+} long_ring_t;
 
-static void lq_init(long_queue_t* queue)
-{
-    queue->data = NULL;
-    queue->capacity = 0;
-    queue->start = queue->end = 0;
-}
+static void lq_init(long_ring_t* queue) { queue->start = queue->end = 0; }
 
-static void lq_free(long_queue_t* queue)
-{
-    free(queue->data);
-    queue->data = NULL;
-    queue->capacity = 0;
-    queue->start = queue->end = 0;
-}
-
-static size_t lq_size(const long_queue_t* queue)
+static size_t lq_size(const long_ring_t* queue)
 {
     return (queue->end >= queue->start) ? (queue->end - queue->start) : 0;
 }
 
-static int lq_ensure_capacity(long_queue_t* queue, size_t additional)
+static int lq_push_back(long_ring_t* queue, long value)
 {
-    assert(queue);
-
-    const size_t size = lq_size(queue);
-
-    // --- Overflow-safe computation of needed slots ---
-    // We need 'size + additional' slots available in total.
-    if (additional > SIZE_MAX - size)
+    if (lq_size(queue) >= MAX_PAIRS)
     {
-        // size + additional would overflow
-        return 0;
-    }
-    const size_t needed = size + additional;
-
-    // If capacity already sufficient, we're done.
-    if (needed <= queue->capacity)
-    {
-        return 1;
-    }
-
-    // --- Compute new capacity with geometric growth, guarding overflow ---
-    const size_t initial_capacity = 16;
-    size_t newcap = (queue->capacity ? queue->capacity : initial_capacity);
-
-    // Grow at least until 'needed', doubling when possible.
-    while (newcap < needed)
-    {
-        // Prevent overflow when doubling
-        if (newcap > SIZE_MAX / 2)
-        {
-            newcap = needed; // fall back to exact needed (last safe step)
-            break;
-        }
-        newcap *= 2;
-    }
-
-    // --- Allocate or grow the buffer ---
-    // Note: realloc(NULL, n) behaves like malloc(n).
-    long* newdata = (long*)realloc(queue->data, newcap * sizeof *newdata);
-    if (!newdata)
-    {
-        // Allocation failed; keep the old buffer intact
-        return 0;
-    }
-
-    // Update pointer and capacity first (safe now that we have storage).
-    queue->data = newdata;
-    queue->capacity = newcap;
-
-    // --- Normalize the active slice to begin at index 0 ---
-    // If there are elements and the slice doesn't start at 0, shift it.
-    if (size > 0 && queue->start != 0)
-    {
-        // NOLINTNEXTLINE
-        memmove(queue->data,
-                queue->data + queue->start,
-                size * sizeof *queue->data);
-    }
-
-    // Reset indices to represent the normalized slice: [0, size)
-    queue->start = 0;
-    queue->end = size;
-
-    return 1;
-}
-
-static int lq_push_back(long_queue_t* queue, long value)
-{
-    if (!lq_ensure_capacity(queue, 1))
-    {
-        return 0;
+        return 0; /* full */
     }
     queue->data[queue->end++] = value;
     return 1;
 }
 
-static int lq_pop_front(long_queue_t* queue, long* out)
+static int lq_pop_front(long_ring_t* queue, long* out)
 {
     if (lq_size(queue) == 0)
     {
@@ -265,52 +102,47 @@ static int lq_pop_front(long_queue_t* queue, long* out)
     return 1;
 }
 
-/* Parser state */
+/* Parser state — site id is a fixed buffer (no malloc) */
 typedef struct
 {
-    char* site_id; /* allocated; may be NULL */
-    double_queue_t speeds;
-    long_queue_t flows;
-    unsigned int idx; /* 1-based index within siteMeasurements block */
+    char site_id[MAX_TEXT];
+    int site_id_set; /* 0 = no id, 1 = have id */
+    double_ring_t speeds;
+    long_ring_t flows;
+    unsigned int idx;
 } parser_state_t;
 
-static void state_init(parser_state_t* state)
+static void state_init(parser_state_t* str)
 {
-    state->site_id = NULL;
-    dq_init(&state->speeds);
-    lq_init(&state->flows);
-    state->idx = 1;
+    str->site_id_set = 0;
+    str->site_id[0] = '\0';
+    dq_init(&str->speeds);
+    lq_init(&str->flows);
+    str->idx = 1;
 }
 
-static void state_free(parser_state_t* state)
+static void state_reset_block(parser_state_t* str)
 {
-    free(state->site_id);
-    dq_free(&state->speeds);
-    lq_free(&state->flows);
-    state->site_id = NULL;
-    state->idx = 1;
+    str->site_id_set = 0;
+    str->site_id[0] = '\0';
+    str->speeds.start = str->speeds.end = 0;
+    str->flows.start = str->flows.end = 0;
+    str->idx = 1;
 }
 
-static void state_reset_block(parser_state_t* state)
-{
-    free(state->site_id);
-    state->site_id = NULL;
-    /* clear queues but keep capacity */
-    state->speeds.start = state->speeds.end = 0;
-    state->flows.start = state->flows.end = 0;
-    state->idx = 1;
-}
-
-/* Helper: read xmlTextReaderReadString() into a newly malloc'd NUL-terminated C
- * string. Caller must free(*out) with free(). Returns 1 on success, 0 on
- * failure (and sets *out to NULL).
+/* Read element text into a fixed buffer (bounded). Returns 1 on success.
+ * If the element text length exceeds bufsize-1, we copy a truncated prefix.
  */
-static int read_element_string(xmlTextReaderPtr reader, char** out)
+static int
+read_element_text_bounded(xmlTextReaderPtr reader, char* buf, size_t bufsize)
 {
     xmlChar* txt = xmlTextReaderReadString(reader);
     if (txt == NULL)
     {
-        *out = NULL;
+        if (buf && bufsize)
+        {
+            buf[0] = '\0';
+        }
         return 0;
     }
     int ilen = xmlStrlen(txt);
@@ -319,31 +151,35 @@ static int read_element_string(xmlTextReaderPtr reader, char** out)
         ilen = 0;
     }
     size_t len = (size_t)ilen;
-    char* str = (char*)malloc(len + 1);
-    if (!str)
+    if (bufsize == 0)
     {
         xmlFree(txt);
-        *out = NULL;
         return 0;
     }
-    if (len > 0)
+    size_t copy = (len < (bufsize - 1)) ? len : (bufsize - 1);
+    if (copy > 0)
     {
-        // NOLINTNEXTLINE[clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling]
-        memcpy(str, txt, len);
+        memcpy(buf, txt, copy); // NOLINT
     }
-    str[len] = '\0';
+    buf[copy] = '\0';
     xmlFree(txt);
-    *out = str;
     return 1;
 }
 
-/* Helper: read attribute value into newly malloc'd string (caller frees). */
-static int read_attribute(xmlTextReaderPtr reader, const char* name, char** out)
+/* Read attribute value into a fixed buffer (bounded); returns 1 on success.
+ */
+static int read_attribute_bounded(xmlTextReaderPtr reader,
+                                  const char* name,
+                                  char* buf,
+                                  size_t bufsize)
 {
     xmlChar* val = xmlTextReaderGetAttribute(reader, BAD_CAST name);
     if (val == NULL)
     {
-        *out = NULL;
+        if (buf && bufsize)
+        {
+            buf[0] = '\0';
+        }
         return 0;
     }
     int ilen = xmlStrlen(val);
@@ -352,101 +188,92 @@ static int read_attribute(xmlTextReaderPtr reader, const char* name, char** out)
         ilen = 0;
     }
     size_t len = (size_t)ilen;
-    char* str = (char*)malloc(len + 1);
-    if (!str)
+    if (bufsize == 0)
     {
         xmlFree(val);
-        *out = NULL;
         return 0;
     }
-    if (len > 0)
+    size_t copy = (len < (bufsize - 1)) ? len : (bufsize - 1);
+    if (copy > 0)
     {
-        // NOLINTNEXTLINE
-        memcpy(str, val, len);
+        memcpy(buf, val, copy); // NOLINT
     }
-    str[len] = '\0';
+    buf[copy] = '\0';
     xmlFree(val);
-    *out = str;
     return 1;
 }
 
-/* read element text and parse as long */
-static int read_element_long(xmlTextReaderPtr reader, long* out)
+/* read element text and parse as long, parsing directly from xmlChar
+ * buffer (no malloc) */
+static int read_element_long_direct(xmlTextReaderPtr reader, long* out)
 {
-    char* str = NULL;
-    if (!read_element_string(reader, &str))
+    xmlChar* txt = xmlTextReaderReadString(reader);
+    if (txt == NULL)
     {
         return 0;
     }
-
-    if (str == NULL)
-    {
-        return 0;
-    }
-
+    char* start = (char*)txt; /* libxml returns mutable buffer; we treat
+                                 as char* for strtol */
     char* end = NULL;
     errno = 0;
     const int decimal = 10;
-    long val = strtol(str, &end, decimal);
-    if (end == str)
+    long value = strtol(start, &end, decimal);
+    if (end == start)
     {
-        free(str);
+        xmlFree(txt);
         return 0;
     }
     if (errno == ERANGE)
     {
-        free(str);
+        xmlFree(txt);
         return 0;
     }
-    *out = val;
-    free(str);
+    *out = value;
+    xmlFree(txt);
     return 1;
 }
 
-/* read element text and parse as double */
-static int read_element_double(xmlTextReaderPtr reader, double* out)
+/* read element text and parse as double directly */
+static int read_element_double_direct(xmlTextReaderPtr reader, double* out)
 {
-    char* str = NULL;
-    if (!read_element_string(reader, &str))
+    xmlChar* txt = xmlTextReaderReadString(reader);
+    if (txt == NULL)
     {
         return 0;
     }
-
-    if (str == NULL)
-    {
-        return 0;
-    }
-
+    char* start = (char*)txt;
     char* end = NULL;
     errno = 0;
-    double val = strtod(str, &end);
-    if (end == str)
+    double value = strtod(start, &end);
+    if (end == start)
     {
-        free(str);
+        xmlFree(txt);
         return 0;
     }
     if (errno == ERANGE)
     {
-        free(str);
+        xmlFree(txt);
         return 0;
     }
-    *out = val;
-    free(str);
+    *out = value;
+    xmlFree(txt);
     return 1;
 }
 
-/* Flush pairs: while both speeds and flows have elements, pop and print */
 static void state_flush_pairs(parser_state_t* state)
 {
-    const char* site = (state->site_id && state->site_id[0]) ? state->site_id
-                                                             : "(unknown_site)";
+    const char* site = (state->site_id_set && state->site_id[0])
+                           ? state->site_id
+                           : "(unknown_site)";
     while (dq_size(&state->speeds) > 0 && lq_size(&state->flows) > 0)
     {
-        double speed = 0.0;
-        long flow = -1;
-        int ok1 = dq_pop_front(&state->speeds, &speed);
-        int ok2 = lq_pop_front(&state->flows, &flow);
-        if (!ok1 || !ok2)
+        double speed;
+        long flow;
+        if (!dq_pop_front(&state->speeds, &speed))
+        {
+            break;
+        }
+        if (!lq_pop_front(&state->flows, &flow))
         {
             break;
         }
@@ -454,48 +281,52 @@ static void state_flush_pairs(parser_state_t* state)
     }
 }
 
-/* Handle a start element */
+/* start element handler */
 static int handle_start_element(xmlTextReaderPtr reader,
                                 const xmlChar* localName,
                                 parser_state_t* state)
 {
     if (name_is(localName, "publicationTime"))
     {
-        char* time = NULL;
-        if (read_element_string(reader, &time))
+        char buf[MAX_TEXT];
+        if (read_element_text_bounded(reader, buf, sizeof buf))
         {
-            puts(time);
+            puts(buf);
         }
-        free(time);
         return 1;
     }
-
     if (name_is(localName, "siteMeasurements"))
     {
         state_reset_block(state);
         return 1;
     }
-
     if (name_is(localName, "measurementSiteReference"))
     {
-        char* siteid = NULL;
-        if (read_attribute(reader, "id", &siteid))
+        char buf[MAX_TEXT];
+        if (read_attribute_bounded(reader, "id", buf, sizeof buf))
         {
-            free(state->site_id);
-            state->site_id = siteid;
+            strncpy(state->site_id, buf, sizeof state->site_id); // NOLINT
+            state->site_id[sizeof state->site_id - 1] = '\0';
+            state->site_id_set = 1;
+        }
+        else
+        {
+            state->site_id_set = 0;
+            state->site_id[0] = '\0';
         }
         return 1;
     }
-
     if (name_is(localName, "speed"))
     {
-        double speed = 0.0;
-        if (read_element_double(reader, &speed))
+        double speed;
+        if (read_element_double_direct(reader, &speed))
         {
             if (!dq_push_back(&state->speeds, speed))
             {
-                /* allocation failure - print error and continue */
-                (void)fprintf(stderr, "Out of memory pushing speed\n");
+                /* queue full, drop or handle as required */
+                (void)fprintf(stderr,
+                              "speed queue full (max %d), dropping value\n",
+                              MAX_PAIRS);
             }
             else
             {
@@ -504,15 +335,16 @@ static int handle_start_element(xmlTextReaderPtr reader,
         }
         return 1;
     }
-
     if (name_is(localName, "vehicleFlowRate"))
     {
-        long rate = 0;
-        if (read_element_long(reader, &rate))
+        long rate;
+        if (read_element_long_direct(reader, &rate))
         {
             if (!lq_push_back(&state->flows, rate))
             {
-                (void)fprintf(stderr, "Out of memory pushing flow\n");
+                (void)fprintf(stderr,
+                              "flow queue full (max %d), dropping value\n",
+                              MAX_PAIRS);
             }
             else
             {
@@ -521,16 +353,13 @@ static int handle_start_element(xmlTextReaderPtr reader,
         }
         return 1;
     }
-
     return 0;
 }
 
-/* Handle end element */
 static int handle_end_element(const xmlChar* localName, parser_state_t* state)
 {
     if (name_is(localName, "siteMeasurements"))
     {
-        /* flush remaining matched pairs for this block, then drop leftovers */
         state_flush_pairs(state);
         state_reset_block(state);
         return 1;
@@ -538,15 +367,13 @@ static int handle_end_element(const xmlChar* localName, parser_state_t* state)
     return 0;
 }
 
-/* Main reader loop */
 static void process_reader(xmlTextReaderPtr reader, parser_state_t* state)
 {
-    int ret = -1;
+    int ret;
     while ((ret = xmlTextReaderRead(reader)) == 1)
     {
         int nodeType = xmlTextReaderNodeType(reader);
         const xmlChar* localName = xmlTextReaderConstLocalName(reader);
-
         if (nodeType == XML_READER_TYPE_ELEMENT)
         {
             (void)handle_start_element(reader, localName, state);
@@ -565,8 +392,6 @@ static void process_reader(xmlTextReaderPtr reader, parser_state_t* state)
 int main(void)
 {
     int options = XML_PARSE_NOERROR | XML_PARSE_NOWARNING | XML_PARSE_NOBLANKS;
-
-    /* create reader for stdin */
     xmlTextReaderPtr reader =
         xmlReaderForFd(STDIN_FILENO, "stdin", NULL, options);
     if (reader == NULL)
@@ -577,12 +402,8 @@ int main(void)
 
     parser_state_t state;
     state_init(&state);
-
     process_reader(reader, &state);
-
     xmlFreeTextReader(reader);
     xmlCleanupParser();
-
-    state_free(&state);
     return 0;
 }
