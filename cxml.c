@@ -125,8 +125,10 @@ static void state_reset_block(parser_state_t* str)
 {
     str->site_id_set = 0;
     str->site_id[0] = '\0';
-    str->speeds.start = str->speeds.end = 0;
-    str->flows.start = str->flows.end = 0;
+    str->speeds.start = 0;
+    str->speeds.end = 0;
+    str->flows.start = 0;
+    str->flows.end = 0;
     str->idx = 1;
 }
 
