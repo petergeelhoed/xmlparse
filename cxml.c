@@ -275,8 +275,7 @@ static int lq_pop_front(long_queue_t* queue, long* out)
 /* Parser state */
 typedef struct
 {
-    char* publication_time; /* allocated; may be NULL */
-    char* site_id;          /* allocated; may be NULL */
+    char* site_id; /* allocated; may be NULL */
     double_queue_t speeds;
     long_queue_t flows;
     unsigned int idx; /* 1-based index within siteMeasurements block */
@@ -284,7 +283,6 @@ typedef struct
 
 static void state_init(parser_state_t* state)
 {
-    state->publication_time = NULL;
     state->site_id = NULL;
     dq_init(&state->speeds);
     lq_init(&state->flows);
@@ -293,11 +291,9 @@ static void state_init(parser_state_t* state)
 
 static void state_free(parser_state_t* state)
 {
-    free(state->publication_time);
     free(state->site_id);
     dq_free(&state->speeds);
     lq_free(&state->flows);
-    state->publication_time = NULL;
     state->site_id = NULL;
     state->idx = 1;
 }
@@ -477,10 +473,9 @@ static int handle_start_element(xmlTextReaderPtr reader,
         char* time = NULL;
         if (read_element_string(reader, &time))
         {
-            free(state->publication_time);
-            state->publication_time = time;
-            puts(state->publication_time);
+            puts(time);
         }
+        free(time);
         return 1;
     }
 
