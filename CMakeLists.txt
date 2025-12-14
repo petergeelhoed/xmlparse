@@ -19,7 +19,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Global optimization flag (equivalent to -O2)
-add_compile_options(-O2)
+#add_compile_options(-O2)
+
+set(C_WARNINGS
+  -Wall
+  -Wextra
+  -Winit-self
+  -Wuninitialized
+  -Wmaybe-uninitialized
+)
+
+# C++ warnings: common useful warnings
+set(CXX_WARNINGS
+  -Wall
+  -Wextra
+  -Wpedantic
+  -Wold-style-cast
+  -Wconversion
+)
 
 # clang-tidy integration: use separate config files for C and C++
 find_program(CLANG_TIDY_EXE NAMES clang-tidy)
@@ -55,12 +72,12 @@ endforeach()
 
 # Configure xmline target
 target_include_directories(xmline PRIVATE ${LIBXML2_INCLUDE_DIRS})
-target_compile_options(xmline PRIVATE ${LIBXML2_CFLAGS_OTHER})
+target_compile_options(xmline PRIVATE ${LIBXML2_CFLAGS_OTHER}${CXX_WARNINGS})
 target_link_libraries(xmline PRIVATE ${LIBXML2_LINK_LIBRARIES})
 
 # Configure cxml target (C implementation)
 target_include_directories(cxml PRIVATE ${LIBXML2_INCLUDE_DIRS})
-target_compile_options(cxml PRIVATE ${LIBXML2_CFLAGS_OTHER})
+target_compile_options(cxml PRIVATE ${LIBXML2_CFLAGS_OTHER} ${C_WARNINGS})
 target_link_libraries(cxml PRIVATE ${LIBXML2_LINK_LIBRARIES})
 
 # If pkg-config provided library dirs, expose them (optional)
