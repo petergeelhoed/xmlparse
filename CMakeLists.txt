@@ -24,17 +24,15 @@ add_compile_options(-O2)
 # clang-tidy integration: use separate config files for C and C++
 find_program(CLANG_TIDY_EXE NAMES clang-tidy)
 
+option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" ON)
+
 if(CLANG_TIDY_EXE)
   message(STATUS "Found clang-tidy: ${CLANG_TIDY_EXE}")
 
-  # Use per-language config files
-  # C files:
-  set(CMAKE_C_CLANG_TIDY
-      "${CLANG_TIDY_EXE};--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy-c")
-
-  # C++ files:
-  set(CMAKE_CXX_CLANG_TIDY
-      "${CLANG_TIDY_EXE};--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
+    if(ENABLE_CLANG_TIDY)
+      set(CMAKE_C_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy-c")
+      set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
+    endif()
 else()
   message(STATUS "clang-tidy not found; static analysis will be skipped")
 endif()
@@ -69,4 +67,7 @@ target_link_libraries(cxml PRIVATE ${LIBXML2_LINK_LIBRARIES})
 if(LIBXML2_LIBRARY_DIRS)
     link_directories(${LIBXML2_LIBRARY_DIRS})
 endif()
+
+
+
 
