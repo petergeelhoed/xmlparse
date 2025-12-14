@@ -19,13 +19,6 @@
 #include <string.h>
 #include <unistd.h>
 
-/* Configure stdout buffering to 8 MiB */
-static int configure_stdout_buffering(void)
-{
-    const size_t eightMB = 8 * 1024 * 1024;
-    return setvbuf(stdout, NULL, _IOFBF, (int)eightMB) == 0;
-}
-
 /* Compare libxml2 xmlChar* local name with a C string */
 static int name_is(const xmlChar* local, const char* key)
 {
@@ -573,12 +566,6 @@ static void process_reader(xmlTextReaderPtr reader, parser_state_t* state)
 
 int main(void)
 {
-    if (!configure_stdout_buffering())
-    {
-        (void)fprintf(stderr, "Failed to configure stdout buffer\n");
-        return 1;
-    }
-
     int options = XML_PARSE_NOERROR | XML_PARSE_NOWARNING | XML_PARSE_NOBLANKS;
 
     /* create reader for stdin */
