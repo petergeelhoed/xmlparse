@@ -1,11 +1,3 @@
-/* xmline_nomalloc.c — minimal changes to avoid per-item mallocs when
- * you can guarantee <= MAX_PAIRS outstanding items and bounded text length.
- *
- * Only shown parts changed from the original are included here as a full
- * standalone file for clarity.
- *
- */
-
 #include <assert.h>
 #include <errno.h>
 #include <libxml/xmlreader.h>
@@ -106,7 +98,6 @@ static int lq_pop_front(long_ring_t* queue, long* out)
 typedef struct
 {
     char site_id[MAX_TEXT];
-    int site_id_set; /* 0 = no id, 1 = have id */
     double_ring_t speeds;
     long_ring_t flows;
     unsigned int idx;
@@ -114,7 +105,6 @@ typedef struct
 
 static void state_init(parser_state_t* str)
 {
-    str->site_id_set = 0;
     str->site_id[0] = '\0';
     dq_init(&str->speeds);
     lq_init(&str->flows);
@@ -123,7 +113,6 @@ static void state_init(parser_state_t* str)
 
 static void state_reset_block(parser_state_t* str)
 {
-    str->site_id_set = 0;
     str->site_id[0] = '\0';
     str->speeds.start = 0;
     str->speeds.end = 0;
@@ -264,9 +253,7 @@ static int read_element_double_direct(xmlTextReaderPtr reader, double* out)
 
 static void state_flush_pairs(parser_state_t* state)
 {
-    const char* site = (state->site_id_set && state->site_id[0])
-                           ? state->site_id
-                           : "(unknown_site)";
+    const char* site = (state->site_id[0]) ? state->site_id : "(unknown_site)";
     while (dq_size(&state->speeds) > 0 && lq_size(&state->flows) > 0)
     {
         double speed;
@@ -309,11 +296,9 @@ static int handle_start_element(xmlTextReaderPtr reader,
         {
             strncpy(state->site_id, buf, sizeof state->site_id); // NOLINT
             state->site_id[sizeof state->site_id - 1] = '\0';
-            state->site_id_set = 1;
         }
         else
         {
-            state->site_id_set = 0;
             state->site_id[0] = '\0';
         }
         return 1;
