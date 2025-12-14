@@ -1,0 +1,14 @@
+Checks: >
+  misc-include-cleaner,
+  bug-prone-*,
+  clang-analyzer-*,
+  misc-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  clang-diagnostic-*,
+  cert-*,
+  google-*,
+  -google-runtime-int
+WarningsAsErrors: ''
+FormatStyle: file

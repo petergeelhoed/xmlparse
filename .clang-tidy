@@ -1,0 +1,24 @@
+Checks: >
+    misc-include-cleaner,
+    modernize-deprecated-headers,
+    bug-prone-*,
+    clang-analyzer-*,
+    cppcoreguidelines-*,
+    -cppcoreguidelines-non-private-member-variables-in-classes,
+    misc-*,
+    -misc-non-private-member-variables-in-classes,
+    modernize-*,
+    -modernize-use-trailing-return-type,
+    performance-*,
+    portability-*,
+    readability-*,
+    clang-diagnostic-*,
+    qt-*,
+    clazy-*,
+    cert-*,
+    google-*,
+    -google-runtime-int,
+    hicpp-*
+
+WarningsAsErrors: ''
+FormatStyle: file
