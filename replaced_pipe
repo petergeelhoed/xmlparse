@@ -1,0 +1,1 @@
+time cat trafficspeed.xml  | sed 's/<publicationTime>\|<measurementSiteReference id="/\r\n/g;' | tr "><" " "  | awk '(NR==2){print $1; print $1 > "/tmp/filll" }(NR>2){w=1;a=1;for(i=2;i<NF;i++){if($i=="speed"){s[w]=$(i+1);w+=1}if($i=="vehicleFlowRate"){q[a]=$(i+1);a+=1  }} if (a>w){w=a}for(i=1;i<w;i++){print i,$1,s[i],q[i];s[i]=-2;q[i]=-2}}' | sed 's/"//' > /dev/null
