@@ -450,9 +450,7 @@ static void state_flush_pairs(parser_state_t* state)
         {
             break;
         }
-        /* print: idx site speed flow, using %g for float-like default
-         * formatting */
-        printf("%u %str %g %ld\n", state->idx++, site, speed, flow);
+        printf("%u %s %g %ld\n", state->idx++, site, speed, flow);
     }
 }
 
