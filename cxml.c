@@ -189,16 +189,13 @@ static int read_element_long(xmlTextReaderPtr reader, long* out)
     errno = 0;
     const int decimal = 10;
     long value = strtol(start, &end, decimal);
-    if (end == start)
+
+    if (end == start || errno == ERANGE)
     {
         xmlFree(txt);
         return 0;
     }
-    if (errno == ERANGE)
-    {
-        xmlFree(txt);
-        return 0;
-    }
+
     *out = value;
     xmlFree(txt);
     return 1;
