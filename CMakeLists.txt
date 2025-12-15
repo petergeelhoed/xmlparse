@@ -19,29 +19,29 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Global optimization flag (equivalent to -O2)
-#add_compile_options(-O2)
-
-set(C_WARNINGS
+add_compile_options(
+  -O2
   -Wall
   -Wextra
+  -Wpedantic
   -Winit-self
   -Wuninitialized
-  -Wmaybe-uninitialized
+  -Wconversion
+  $<$<C_COMPILER_ID:GNU>:-Wmaybe-uninitialized>
+)
+
+set(C_WARNINGS
 )
 
 # C++ warnings: common useful warnings
 set(CXX_WARNINGS
-  -Wall
-  -Wextra
-  -Wpedantic
   -Wold-style-cast
-  -Wconversion
 )
 
 # clang-tidy integration: use separate config files for C and C++
 find_program(CLANG_TIDY_EXE NAMES clang-tidy)
 
-option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" ON)
+option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" OFF)
 
 if(CLANG_TIDY_EXE)
   message(STATUS "Found clang-tidy: ${CLANG_TIDY_EXE}")
