@@ -14,8 +14,10 @@
 // Compare libxml2 xmlChar* local name with a C string
 static inline bool nameIs(const xmlChar* local, const char* key)
 {
+    // NOLINTBEGIN[cppcoreguidelines-pro-type-reinterpret-cast]
     return local != nullptr &&
-           (xmlStrEqual(local, BAD_CAST key) != 0); // NOLINT
+           (xmlStrEqual(local, reinterpret_cast<const xmlChar*>(key)) != 0);
+    // NOLINTEND[cppcoreguidelines-pro-type-reinterpret-cast]
 }
 
 // Read element text as long (vehicleFlowRate) without any casts
@@ -90,7 +92,10 @@ static inline bool readElementString(xmlTextReaderPtr reader, std::string& out)
 static inline bool
 readAttribute(xmlTextReaderPtr reader, const char* name, std::string& out)
 {
-    xmlChar* val = xmlTextReaderGetAttribute(reader, BAD_CAST name); // NOLINT
+    // NOLINTBEGIN[cppcoreguidelines-pro-type-reinterpret-cast]
+    xmlChar* val = xmlTextReaderGetAttribute(
+        reader, reinterpret_cast<const xmlChar*>(name));
+    // NOLINTEND[cppcoreguidelines-pro-type-reinterpret-cast]
     if (val == nullptr)
     {
         out.clear();
