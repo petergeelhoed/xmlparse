@@ -50,10 +50,18 @@
       }
     },
 
-    { "name": "gcc-debug",       "inherits": [ "compiler:gcc",    "bt:Debug"   ] },
-    { "name": "gcc-release",     "inherits": [ "compiler:gcc",    "bt:Release" ] },
-    { "name": "clang15-debug",   "inherits": [ "compiler:clang15","bt:Debug"   ] },
-    { "name": "clang15-release", "inherits": [ "compiler:clang15","bt:Release" ] }
+    { "name": "gcc-debug",       "inherits": [ "compiler:gcc",    "bt:Debug"   ], 
+      "cacheVariables": { "ENABLE_CLANG_TIDY": "OFF" }
+    },
+    { "name": "gcc-release",     "inherits": [ "compiler:gcc",    "bt:Release" ],
+      "cacheVariables": { "ENABLE_CLANG_TIDY": "ON" }
+    },
+    { "name": "clang15-debug",   "inherits": [ "compiler:clang15","bt:Debug"   ], 
+      "cacheVariables": { "ENABLE_CLANG_TIDY": "OFF" }
+    },
+    { "name": "clang15-release", "inherits": [ "compiler:clang15","bt:Release" ],
+      "cacheVariables": { "ENABLE_CLANG_TIDY": "OFF" }
+    }
   ],
 
   "buildPresets": [
