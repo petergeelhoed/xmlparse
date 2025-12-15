@@ -1,0 +1,104 @@
+
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+
+    {
+      "name": "compiler:gcc",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "/usr/bin/gcc",
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++"
+      }
+    },
+    {
+      "name": "compiler:clang15",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "/usr/bin/clang-15",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++-15"
+      }
+    },
+
+    {
+      "name": "bt:Debug",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "bt:Release",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+
+    { "name": "gcc-debug",       "inherits": [ "compiler:gcc",    "bt:Debug"   ] },
+    { "name": "gcc-release",     "inherits": [ "compiler:gcc",    "bt:Release" ] },
+    { "name": "clang15-debug",   "inherits": [ "compiler:clang15","bt:Debug"   ] },
+    { "name": "clang15-release", "inherits": [ "compiler:clang15","bt:Release" ] }
+  ],
+
+  "buildPresets": [
+    { "name": "gcc-debug",       "configurePreset": "gcc-debug",       "verbose": true },
+    { "name": "gcc-release",     "configurePreset": "gcc-release",     "verbose": true },
+    { "name": "clang15-debug",   "configurePreset": "clang15-debug",   "verbose": true },
+    { "name": "clang15-release", "configurePreset": "clang15-release", "verbose": true }
+  ],
+
+  "testPresets": [
+    { "name": "gcc-debug",       "configurePreset": "gcc-debug" },
+    { "name": "gcc-release",     "configurePreset": "gcc-release" },
+    { "name": "clang15-debug",   "configurePreset": "clang15-debug" },
+    { "name": "clang15-release", "configurePreset": "clang15-release" }
+  ],
+
+  "workflowPresets": [
+    {
+      "name": "wf-gcc-debug",
+      "steps": [
+        { "type": "configure", "name": "gcc-debug" },
+        { "type": "build",     "name": "gcc-debug" }
+      ]
+    },
+    {
+      "name": "wf-gcc-release",
+      "steps": [
+        { "type": "configure", "name": "gcc-release" },
+        { "type": "build",     "name": "gcc-release" }
+      ]
+    },
+    {
+      "name": "wf-clang15-debug",
+      "steps": [
+        { "type": "configure", "name": "clang15-debug" },
+        { "type": "build",     "name": "clang15-debug" }
+      ]
+    },
+    {
+      "name": "wf-clang15-release",
+      "steps": [
+        { "type": "configure", "name": "clang15-release" },
+        { "type": "build",     "name": "clang15-release" }
+      ]
+    }
+  ]
+}
+
