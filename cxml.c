@@ -10,13 +10,11 @@
 #define MAX_PAIRS 64 /* maximum unmatched speeds or flows */
 #define MAX_TEXT 512 /* max length for site id / publicationTime strings */
 
-/* Compare libxml2 xmlChar* local name with a C string */
 static int name_is(const xmlChar* local, const char* key)
 {
     return local != NULL && (xmlStrEqual(local, BAD_CAST key) != 0);
 }
 
-/* Fixed-size ring buffer for doubles (no malloc) */
 typedef struct
 {
     double data[MAX_PAIRS];
@@ -24,7 +22,11 @@ typedef struct
     size_t end;
 } double_ring_t;
 
-static void dq_init(double_ring_t* queue) { queue->start = queue->end = 0; }
+static void dq_init(double_ring_t* queue)
+{
+    queue->start = 0;
+    queue->end = 0;
+}
 
 static size_t dq_size(const double_ring_t* queue)
 {
@@ -35,7 +37,7 @@ static int dq_push_back(double_ring_t* queue, double value)
 {
     if (dq_size(queue) >= MAX_PAIRS)
     {
-        return 0; /* full */
+        return 0;
     }
     queue->data[queue->end++] = value;
     return 1;
@@ -50,12 +52,12 @@ static int dq_pop_front(double_ring_t* queue, double* out)
     *out = queue->data[queue->start++];
     if (queue->start == queue->end)
     {
-        queue->start = queue->end = 0;
+        queue->start = 0;
+        queue->end = 0;
     }
     return 1;
 }
 
-/* Fixed-size ring buffer for long (no malloc) */
 typedef struct
 {
     long data[MAX_PAIRS];
@@ -63,7 +65,11 @@ typedef struct
     size_t end;
 } long_ring_t;
 
-static void lq_init(long_ring_t* queue) { queue->start = queue->end = 0; }
+static void lq_init(long_ring_t* queue)
+{
+    queue->start = 0;
+    queue->end = 0;
+}
 
 static size_t lq_size(const long_ring_t* queue)
 {
@@ -74,7 +80,7 @@ static int lq_push_back(long_ring_t* queue, long value)
 {
     if (lq_size(queue) >= MAX_PAIRS)
     {
-        return 0; /* full */
+        return 0;
     }
     queue->data[queue->end++] = value;
     return 1;
@@ -89,12 +95,12 @@ static int lq_pop_front(long_ring_t* queue, long* out)
     *out = queue->data[queue->start++];
     if (queue->start == queue->end)
     {
-        queue->start = queue->end = 0;
+        queue->start = 0;
+        queue->end = 0;
     }
     return 1;
 }
 
-/* Parser state — site id is a fixed buffer (no malloc) */
 typedef struct
 {
     char site_id[MAX_TEXT];
@@ -121,12 +127,9 @@ static void state_reset_block(parser_state_t* str)
     str->idx = 1;
 }
 
-/* Read element text into a fixed buffer (bounded). Returns 1 on success.
- * If the element text length exceeds bufsize-1, we copy a truncated prefix.
- */
-static int
-read_element_text_bounded(xmlTextReaderPtr reader, char* buf, size_t bufsize)
+static int read_element_text(xmlTextReaderPtr reader, char* buf, size_t bufsize)
 {
+    assert(bufsize > 0);
     xmlChar* txt = xmlTextReaderReadString(reader);
     if (txt == NULL)
     {
@@ -136,17 +139,7 @@ read_element_text_bounded(xmlTextReaderPtr reader, char* buf, size_t bufsize)
         }
         return 0;
     }
-    int ilen = xmlStrlen(txt);
-    if (ilen < 0)
-    {
-        ilen = 0;
-    }
-    size_t len = (size_t)ilen;
-    if (bufsize == 0)
-    {
-        xmlFree(txt);
-        return 0;
-    }
+    size_t len = (size_t)xmlStrlen(txt);
     size_t copy = (len < (bufsize - 1)) ? len : (bufsize - 1);
     if (copy > 0)
     {
@@ -157,13 +150,12 @@ read_element_text_bounded(xmlTextReaderPtr reader, char* buf, size_t bufsize)
     return 1;
 }
 
-/* Read attribute value into a fixed buffer (bounded); returns 1 on success.
- */
-static int read_attribute_bounded(xmlTextReaderPtr reader,
-                                  const char* name,
-                                  char* buf,
-                                  size_t bufsize)
+static int read_attribute(xmlTextReaderPtr reader,
+                          const char* name,
+                          char* buf,
+                          size_t bufsize)
 {
+    assert(bufsize > 0);
     xmlChar* val = xmlTextReaderGetAttribute(reader, BAD_CAST name);
     if (val == NULL)
     {
@@ -173,17 +165,7 @@ static int read_attribute_bounded(xmlTextReaderPtr reader,
         }
         return 0;
     }
-    int ilen = xmlStrlen(val);
-    if (ilen < 0)
-    {
-        ilen = 0;
-    }
-    size_t len = (size_t)ilen;
-    if (bufsize == 0)
-    {
-        xmlFree(val);
-        return 0;
-    }
+    size_t len = (size_t)xmlStrlen(val);
     size_t copy = (len < (bufsize - 1)) ? len : (bufsize - 1);
     if (copy > 0)
     {
@@ -194,17 +176,15 @@ static int read_attribute_bounded(xmlTextReaderPtr reader,
     return 1;
 }
 
-/* read element text and parse as long, parsing directly from xmlChar
- * buffer (no malloc) */
-static int read_element_long_direct(xmlTextReaderPtr reader, long* out)
+static int read_element_long(xmlTextReaderPtr reader, long* out)
 {
     xmlChar* txt = xmlTextReaderReadString(reader);
     if (txt == NULL)
     {
         return 0;
     }
-    char* start = (char*)txt; /* libxml returns mutable buffer; we treat
-                                 as char* for strtol */
+
+    const char* start = (char*)txt;
     char* end = NULL;
     errno = 0;
     const int decimal = 10;
@@ -224,24 +204,18 @@ static int read_element_long_direct(xmlTextReaderPtr reader, long* out)
     return 1;
 }
 
-/* read element text and parse as double directly */
-static int read_element_double_direct(xmlTextReaderPtr reader, double* out)
+static int read_element_double(xmlTextReaderPtr reader, double* out)
 {
     xmlChar* txt = xmlTextReaderReadString(reader);
     if (txt == NULL)
     {
         return 0;
     }
-    char* start = (char*)txt;
+    const char* start = (char*)txt;
     char* end = NULL;
     errno = 0;
     double value = strtod(start, &end);
-    if (end == start)
-    {
-        xmlFree(txt);
-        return 0;
-    }
-    if (errno == ERANGE)
+    if (end == start || errno == ERANGE)
     {
         xmlFree(txt);
         return 0;
@@ -270,7 +244,6 @@ static void state_flush_pairs(parser_state_t* state)
     }
 }
 
-/* start element handler */
 static int handle_start_element(xmlTextReaderPtr reader,
                                 const xmlChar* localName,
                                 parser_state_t* state)
@@ -278,7 +251,7 @@ static int handle_start_element(xmlTextReaderPtr reader,
     if (name_is(localName, "publicationTime"))
     {
         char buf[MAX_TEXT];
-        if (read_element_text_bounded(reader, buf, sizeof buf))
+        if (read_element_text(reader, buf, sizeof buf))
         {
             puts(buf);
         }
@@ -292,7 +265,7 @@ static int handle_start_element(xmlTextReaderPtr reader,
     if (name_is(localName, "measurementSiteReference"))
     {
         char buf[MAX_TEXT];
-        if (read_attribute_bounded(reader, "id", buf, sizeof buf))
+        if (read_attribute(reader, "id", buf, sizeof buf))
         {
             strncpy(state->site_id, buf, sizeof state->site_id); // NOLINT
             state->site_id[sizeof state->site_id - 1] = '\0';
@@ -306,11 +279,10 @@ static int handle_start_element(xmlTextReaderPtr reader,
     if (name_is(localName, "speed"))
     {
         double speed;
-        if (read_element_double_direct(reader, &speed))
+        if (read_element_double(reader, &speed))
         {
             if (!dq_push_back(&state->speeds, speed))
             {
-                /* queue full, drop or handle as required */
                 (void)fprintf(stderr,
                               "speed queue full (max %d), dropping value\n",
                               MAX_PAIRS);
@@ -325,7 +297,7 @@ static int handle_start_element(xmlTextReaderPtr reader,
     if (name_is(localName, "vehicleFlowRate"))
     {
         long rate;
-        if (read_element_long_direct(reader, &rate))
+        if (read_element_long(reader, &rate))
         {
             if (!lq_push_back(&state->flows, rate))
             {
