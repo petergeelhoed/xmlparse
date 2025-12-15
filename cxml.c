@@ -244,73 +244,104 @@ static void state_flush_pairs(parser_state_t* state)
     }
 }
 
+typedef int (*element_handler_t)(xmlTextReaderPtr, parser_state_t*);
+
+static int h_publicationTime(xmlTextReaderPtr reader, parser_state_t* state)
+{
+    (void)state;
+    char buf[MAX_TEXT];
+    if (read_element_text(reader, buf, sizeof buf))
+    {
+        puts(buf);
+    }
+    return 1;
+}
+
+static int h_siteMeasurements(xmlTextReaderPtr reader, parser_state_t* state)
+{
+    (void)reader;
+    state_reset_block(state);
+    return 1;
+}
+
+static int h_measurementSiteReference(xmlTextReaderPtr reader,
+                                      parser_state_t* state)
+{
+    char buf[MAX_TEXT];
+    if (read_attribute(reader, "id", buf, sizeof buf))
+    {
+        strncpy(state->site_id, buf, sizeof state->site_id); // NOLINT
+        state->site_id[sizeof state->site_id - 1] = '\0';
+    }
+    else
+    {
+        state->site_id[0] = '\0';
+    }
+    return 1;
+}
+
+static int h_speed(xmlTextReaderPtr reader, parser_state_t* state)
+{
+    double speed;
+    if (read_element_double(reader, &speed))
+    {
+        if (!dq_push_back(&state->speeds, speed))
+        {
+            (void)fprintf(stderr,
+                          "speed queue full (max %d), dropping value\n",
+                          MAX_PAIRS);
+        }
+        else
+        {
+            state_flush_pairs(state);
+        }
+    }
+    return 1;
+}
+
+static int h_vehicleFlowRate(xmlTextReaderPtr reader, parser_state_t* state)
+{
+    long rate;
+    if (read_element_long(reader, &rate))
+    {
+        if (!lq_push_back(&state->flows, rate))
+        {
+            (void)fprintf(stderr,
+                          "flow queue full (max %d), dropping value\n",
+                          MAX_PAIRS);
+        }
+        else
+        {
+            state_flush_pairs(state);
+        }
+    }
+    return 1;
+}
+
+struct element_dispatch
+{
+    const char* name;
+    element_handler_t fn;
+};
+
+static const struct element_dispatch DISPATCH[] = {
+    {"publicationTime", h_publicationTime},
+    {"siteMeasurements", h_siteMeasurements},
+    {"measurementSiteReference", h_measurementSiteReference},
+    {"speed", h_speed},
+    {"vehicleFlowRate", h_vehicleFlowRate},
+};
+
 static int handle_start_element(xmlTextReaderPtr reader,
                                 const xmlChar* localName,
                                 parser_state_t* state)
 {
-    if (name_is(localName, "publicationTime"))
+    for (size_t i = 0; i < sizeof(DISPATCH) / sizeof(DISPATCH[0]); ++i)
     {
-        char buf[MAX_TEXT];
-        if (read_element_text(reader, buf, sizeof buf))
+        if (name_is(localName, DISPATCH[i].name))
         {
-            puts(buf);
+            return DISPATCH[i].fn(reader, state);
         }
-        return 1;
-    }
-    if (name_is(localName, "siteMeasurements"))
-    {
-        state_reset_block(state);
-        return 1;
-    }
-    if (name_is(localName, "measurementSiteReference"))
-    {
-        char buf[MAX_TEXT];
-        if (read_attribute(reader, "id", buf, sizeof buf))
-        {
-            strncpy(state->site_id, buf, sizeof state->site_id); // NOLINT
-            state->site_id[sizeof state->site_id - 1] = '\0';
-        }
-        else
-        {
-            state->site_id[0] = '\0';
-        }
-        return 1;
-    }
-    if (name_is(localName, "speed"))
-    {
-        double speed;
-        if (read_element_double(reader, &speed))
-        {
-            if (!dq_push_back(&state->speeds, speed))
-            {
-                (void)fprintf(stderr,
-                              "speed queue full (max %d), dropping value\n",
-                              MAX_PAIRS);
-            }
-            else
-            {
-                state_flush_pairs(state);
-            }
-        }
-        return 1;
-    }
-    if (name_is(localName, "vehicleFlowRate"))
-    {
-        long rate;
-        if (read_element_long(reader, &rate))
-        {
-            if (!lq_push_back(&state->flows, rate))
-            {
-                (void)fprintf(stderr,
-                              "flow queue full (max %d), dropping value\n",
-                              MAX_PAIRS);
-            }
-            else
-            {
-                state_flush_pairs(state);
-            }
-        }
-        return 1;
     }
     return 0;
 }
