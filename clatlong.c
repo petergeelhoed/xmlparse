@@ -61,6 +61,7 @@ static int dq_pop_front(double_ring_t* queue, double* out)
 typedef struct
 {
     char site_id[MAX_TEXT];
+    char date[MAX_TEXT];
     double_ring_t latitude;
     double_ring_t longitude;
 } parser_state_t;
@@ -68,6 +69,7 @@ typedef struct
 static void state_init(parser_state_t* str)
 {
     str->site_id[0] = '\0';
+    str->date[0] = '\0';
     dq_init(&str->latitude);
     dq_init(&str->longitude);
 }
@@ -75,6 +77,7 @@ static void state_init(parser_state_t* str)
 static void state_reset_block(parser_state_t* str)
 {
     str->site_id[0] = '\0';
+    str->date[0] = '\0';
     str->latitude.start = 0;
     str->latitude.end = 0;
     str->longitude.start = 0;
@@ -154,6 +157,7 @@ static int read_element_double(xmlTextReaderPtr reader, double* out)
 static void state_flush_pairs(parser_state_t* state)
 {
     const char* site = (state->site_id[0]) ? state->site_id : "(unknown_site)";
+    const char* date = (state->date[0]) ? state->date : "(unknown_date)";
     while (dq_size(&state->latitude) > 0 && dq_size(&state->longitude) > 0)
     {
         double lat;
@@ -166,7 +170,7 @@ static void state_flush_pairs(parser_state_t* state)
         {
             break;
         }
-        printf("%s %g %g\n", site, lat, longi);
+        printf("%s %s %g %g\n", site, date, lat, longi);
     }
 }
 
@@ -179,6 +183,22 @@ static int h_publicationTime(xmlTextReaderPtr reader, parser_state_t* state)
     if (read_element_text(reader, buf, sizeof buf))
     {
         puts(buf);
+    }
+    return 1;
+}
+
+static int h_measurementSiteRecordVersionTime(xmlTextReaderPtr reader,
+                                              parser_state_t* state)
+{
+    char buf[MAX_TEXT];
+    if (read_element_text(reader, buf, sizeof buf))
+    {
+        strncpy(state->date, buf, sizeof state->date); // NOLINT
+        state->date[sizeof state->date - 1] = '\0';
+    }
+    else
+    {
+        state->date[0] = '\0';
     }
     return 1;
 }
@@ -253,6 +273,7 @@ static const struct element_dispatch DISPATCH[] = {
     {"publicationTime", h_publicationTime},
     {"measurementSiteTable", h_siteMeasurements},
     {"measurementSiteRecord", h_measurementSiteRecord},
+    {"measurementSiteRecordVersionTime", h_measurementSiteRecordVersionTime},
     {"latitude", h_latitude},
     {"longitude", h_longitude},
 };
