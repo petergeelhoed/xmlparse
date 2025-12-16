@@ -64,6 +64,7 @@ message(STATUS "LIBXML2_LIBRARY_DIRS='${LIBXML2_LIBRARY_DIRS}'")
 # Define the executable targets
 add_executable(xmline xmline.cpp)
 add_executable(cxml cxml.c)
+add_executable(clatlong clatlong.c)
 
 # Apply pkg-config include dirs, compile defs, and options to both targets
 foreach(tgt IN LISTS CMAKE_PROJECT_NAME)
@@ -79,6 +80,11 @@ target_link_libraries(xmline PRIVATE ${LIBXML2_LINK_LIBRARIES})
 target_include_directories(cxml PRIVATE ${LIBXML2_INCLUDE_DIRS})
 target_compile_options(cxml PRIVATE ${LIBXML2_CFLAGS_OTHER} ${C_WARNINGS})
 target_link_libraries(cxml PRIVATE ${LIBXML2_LINK_LIBRARIES})
+
+# Configure clatlong target (C implementation)
+target_include_directories(clatlong PRIVATE ${LIBXML2_INCLUDE_DIRS})
+target_compile_options(clatlong PRIVATE ${LIBXML2_CFLAGS_OTHER} ${C_WARNINGS})
+target_link_libraries(clatlong PRIVATE ${LIBXML2_LINK_LIBRARIES})
 
 # If pkg-config provided library dirs, expose them (optional)
 if(LIBXML2_LIBRARY_DIRS)
